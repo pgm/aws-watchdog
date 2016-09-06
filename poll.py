@@ -13,7 +13,6 @@ class Prices:
         self.spot_cache = {}
 
     def get_price(self, is_spot, instance_type, zone):
-        assert not is_spot
         if is_spot:
             key = (zone, instance_type)
             if key in self.spot_cache:
