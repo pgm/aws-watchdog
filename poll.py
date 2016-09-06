@@ -1,3 +1,4 @@
+import os
 import boto.ec2
 import boto.ec2.cloudwatch
 import datetime
@@ -121,12 +122,30 @@ def report(error_key, message):
     global had_error
     reported_errors.append( (error_key, message) )
 
+def set_env_from_cred_file(path):
+    vars = {}
+    with open(path, "rt") as fd:
+        for line in fd.readlines():
+            m = re.match("([^ =]+)\\s*=\\s*(\\S+)\\s+", line)
+            if m is not None:
+                vars[m.group(1)] = m.group(2)
+
+    assert "AWS_ACCESS_KEY_ID" in vars
+    assert "AWS_SECRET_ACCESS_KEY" in vars
+
+    os.environ["AWS_ACCESS_KEY_ID"] = vars["AWS_ACCESS_KEY_ID"]
+    os.environ["AWS_SECRET_ACCESS_KEY"] = vars["AWS_SECRET_ACCESS_KEY"]
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Check status of EC2 nodes")
     parser.add_argument("db", help="path to file to use to store snapshot of data collected from EC2")
     parser.add_argument("--max_spend", type=float, help="alert if $ per/hour is exceeded", default=0.10)
+    parser.add_argument("--credentials", help="path to AWS credentials")
     args = parser.parse_args()
+
+    if args.credentials is not None:
+        set_env_from_cred_file(args.credentials)
 
     snapshots = update(args.db)
     check_spend(snapshots, args.max_spend)
