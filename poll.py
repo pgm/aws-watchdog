@@ -113,6 +113,7 @@ HostConfig = attr.make_class("HostConfig", ["name", "pattern", "min_cpu_avg"])
 host_configs = [
     HostConfig("master", "master", 0),
     HostConfig("aws03", "aws03", 0),
+    HostConfig("prism-web-hosting", "prism-web-hosting", 0),
     HostConfig("star-cluster-node", "node[0-9]+", 90),
     HostConfig("default", ".*", 1e10)
    ]
