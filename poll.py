@@ -2,6 +2,7 @@ import boto.ec2
 import boto.ec2.cloudwatch
 import datetime
 from tinydb import TinyDB, Query
+import collections
 
 class Prices:
     def __init__(self,c, filename):
@@ -63,7 +64,7 @@ def update(db_filename):
     prices=Prices(boto.ec2.connect_to_region("us-east-1"), "prices_by_type.py")
     snapshot = get_snapshot(prices, ["us-east-1"])
     
-    db = TinyDB(db_filename)
+    db = TinyDB(db_filename, indent=2)
     db.insert(snapshot)
     # prune old snapshots > 5 days
     last_timestamp_to_keep = datetime.datetime.now() - datetime.timedelta(0, 60*60*24*5)
@@ -71,9 +72,68 @@ def update(db_filename):
 
     snapshots = db.all()
     snapshots.sort(key=lambda x: x['timestamp'])
-    last_snapshot = snapshots[-1]
+    return snapshots
 
-    print(calc_total_spend(last_snapshot))
+def check_spend(snapshot_history, max_spend):
+    last_snapshot = snapshots[-1]
+    current_spend = calc_total_spend(last_snapshot)
+    if max_spend < current_spend:
+        report("exceeded-max-spend", "Current hourly spend ${}/hour > max spend ${}/hour".format(current_spend, max_spend))
+
+def check_cpu(snapshot_history, host_configs):
+    too_low = collections.defaultdict(lambda: set())
+    last_snapshot = snapshots[-1]
+    for inst in last_snapshot['instances']:
+        name = inst['name']
+        last_cpu = inst['last_cpu']
+        if last_cpu is None:
+            last_cpu_avg = 0
+        else:
+            last_cpu_avg = last_cpu['cpu_util_percent']
+        
+        host_config = find_matching_host(host_configs, name)
+        if host_config.min_cpu_avg > last_cpu_avg:
+            too_low[host_config.name].add( (name, last_cpu_avg) )
+    
+    for name, examples in too_low.items():
+        report(name+"-cpu-too-low", "The following hosts reported low cpu usage: {}".format(examples))
+
+import attr
+import re
+import sys
+
+def find_matching_host(configs, name):
+    for c in configs:
+        if re.match(c.pattern, name) is not None:
+            return c
+    raise Exception("No match: "+name)
+
+HostConfig = attr.make_class("HostConfig", ["name", "pattern", "min_cpu_avg"])
+host_configs = [
+    HostConfig("master", "master", 0),
+    HostConfig("aws03", "aws03", 0),
+    HostConfig("star-cluster-node", "node[0-9]+", 90),
+    HostConfig("default", ".*", 1e10)
+   ]
+
+reported_errors = []
+def report(error_key, message):
+    global had_error
+    reported_errors.append( (error_key, message) )
 
 if __name__ == "__main__":
-    update("db.json")
+    import argparse
+    parser = argparse.ArgumentParser(description="Check status of EC2 nodes")
+    parser.add_argument("db", help="path to file to use to store snapshot of data collected from EC2")
+    parser.add_argument("--max_spend", type=float, help="alert if $ per/hour is exceeded", default=0.10)
+    args = parser.parse_args()
+
+    snapshots = update(args.db)
+    check_spend(snapshots, args.max_spend)
+    check_cpu(snapshots, host_configs)
+    for error_key, message in reported_errors:
+        print("{}: {}".format(error_key, message))
+    if len(reported_errors) > 0:
+        sys.exit(1)
+    print("okay")
+
