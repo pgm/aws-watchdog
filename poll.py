@@ -45,6 +45,7 @@ def get_snapshot(prices, regions):
         c = boto.ec2.connect_to_region(region)
         assert c is not None
         instances = c.get_only_instances()
+        print("Got instances: {}".format(instances))
         for instance in instances:
             if instance.state in ['terminated', 'stopped']:
                 continue
