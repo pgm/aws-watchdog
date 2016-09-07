@@ -17,7 +17,7 @@ class Prices:
             key = (zone, instance_type)
             if key in self.spot_cache:
                 return self.spot_cache[key]
-            now = datetime.datetime.now()
+            now = datetime.datetime.utcnow()
             h = self.c.get_spot_price_history(now.isoformat(), now.isoformat(), instance_type, availability_zone=zone)
             price = max([x.price for x in h])
             self.spot_cache[key] = price
@@ -29,8 +29,9 @@ class Prices:
             return price
 
 def get_cpu_utilization(cw, instance_id):
-    now = datetime.datetime.now()
-    stats = cw.get_metric_statistics(60, now - datetime.timedelta(0, 60*30), now, "CPUUtilization", "AWS/EC2", ["Average"], dimensions=dict(InstanceId=instance_id), unit=None)
+    now = datetime.datetime.utcnow()
+    start = now - datetime.timedelta(0, 60*30)
+    stats = cw.get_metric_statistics(60, start, now, "CPUUtilization", "AWS/EC2", ["Average"], dimensions=dict(InstanceId=[instance_id]), unit=None)
     if len(stats) < 1:
         return None
     last = stats[-1]
